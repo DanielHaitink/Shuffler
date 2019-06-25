@@ -1,10 +1,11 @@
 from __future__ import print_function
+
 import math
-import random
 import os
+import random
+import re
 import shutil
 import sys
-import re
 
 
 class ProgressBar(object):
@@ -21,7 +22,7 @@ class ProgressBar(object):
         self.symbol = symbol
         self.output = output
         self.fmt = re.sub(r'(?P<name>%\(.+?\))d',
-            r'\g<name>%dd' % len(str(total)), fmt)
+                          r'\g<name>%dd' % len(str(total)), fmt)
 
         self.current = 0
 
@@ -65,10 +66,14 @@ class Shuffler:
         self._shuffled_dir = shuffled_dir
         self._folds = folds
 
+        if not os.path.exists(self._shuffled_dir):
+            print("Destination directory does not exist, creating directory...")
+            os.makedirs(self._shuffled_dir)
+
         print("Shuffling files from %s to %s, in %i folds." % (file_dir, shuffled_dir, folds))
 
         self._read_labels()
-        self._create_new_labels()
+        self._create_new_labels(self._shuffled_dir)
         self._move_files()
 
     def _create_fold_name(self, number: int):
@@ -84,43 +89,47 @@ class Shuffler:
         self._original_labels = labels
         self._new_labels = random.sample(labels, len(labels))
 
-    def _create_new_labels(self):
-        with open(os.path.join(self._shuffled_dir, self.LABEL_FILE), 'w+') as file:
-            for label in self._new_labels:
-                file.write(label + "\n")
+    def _create_new_labels(self, write_dir: str, start: int = 0, end: int = 0):
+        if end is 0:
+            end = len(self._new_labels)
+
+        with open(os.path.join(write_dir, self.LABEL_FILE), 'w+') as file:
+            for index in range(start, end):
+                file.write(self._new_labels[index] + '\n')
 
     def _move_files(self):
         start = 0
         files_per_fold = math.ceil(len(self._original_labels) / self._folds)
-
-        if not os.path.exists(self._file_dir):
-            print("Destination directory does not exist, creating directory...")
-            os.makedirs(self._file_dir)
 
         print("Copying files to destination dir")
 
         progress = ProgressBar(len(self._original_labels), fmt=ProgressBar.FULL)
 
         for fold in range(0, self._folds):
+            fold_dir = os.path.join(self._shuffled_dir, self._create_fold_name(fold))
+
             for file_number in range(start, start + files_per_fold):
-                if (file_number >= len(self._original_labels)):
+                if file_number >= len(self._original_labels):
+                    self._create_new_labels(fold_dir, start)
                     return
 
                 new_label = self._new_labels[file_number]
                 old_label_index = self._original_labels.index(new_label)
 
-                src = os.path.join(self._file_dir, str(old_label_index))
-                dest = os.path.join(self._shuffled_dir, self._create_fold_name(fold), str(file_number))
+                src_dir = os.path.join(self._file_dir, str(old_label_index))
+                dest_dir = os.path.join(fold_dir, str(file_number))
 
                 try:
-                    shutil.copytree(src, dest)
+                    shutil.copytree(src_dir, dest_dir)
                 except:
                     progress.halt()
-                    exit("Could not copy folder %s to %s.\nCheck if the output directory is completely empty!" % (src, dest))
+                    exit("Could not copy folder %s to %s.\nCheck if the output directory is completely empty!" % (
+                        src_dir, dest_dir))
 
                 progress.current += 1
                 progress()
 
+            self._create_new_labels(fold_dir, start, start + files_per_fold)
             start = start + files_per_fold
 
         progress.done()
