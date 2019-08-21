@@ -101,7 +101,9 @@ class Fold:
 
         # Move the train and test files
         self._move_files(0, train_length, train_path)
+        self._create_new_labels(train_path, 0, train_length)
         self._move_files(train_length, label_length, test_path)
+        self._create_new_labels(test_path, train_length, label_length)
 
     def _move_files(self, start: int, end: int, destination: str):
         progress = ProgressBar(end - start, fmt=ProgressBar.FULL)
