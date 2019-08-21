@@ -50,44 +50,40 @@ class ProgressBar(object):
         self()
         print('', file=self.output)
 
-
-class Shuffler:
-    LABEL_FILE = "Labels.txt"
+class Fold:
     FOLD_NAME = "fold_"
+    TEST_NAME = "test"
+    TRAIN_NAME = "train"
+    LABEL_FILE = "Labels.txt"
 
-    _folds = 1
-    _original_labels = []
-    _new_labels = []
-    _shuffled_dir = ""
-    _file_dir = ""
+    def __init__(self, origin_dir: str, out_dir: str, train_part: float, fold_number: int, shuffle: bool = True):
+        self._origin_dir = origin_dir
+        self._out_dir = os.path.join(out_dir, self.FOLD_NAME + str(fold_number))
+        self._train_part = train_part
+        self._shuffle = shuffle
 
-    def __init__(self, file_dir: str, shuffled_dir: str, folds: int = 5):
-        self._file_dir = file_dir
-        self._shuffled_dir = shuffled_dir
-        self._folds = folds
+        assert train_part < 1
 
-        if not os.path.exists(self._shuffled_dir):
-            print("Destination directory does not exist, creating directory...")
-            os.makedirs(self._shuffled_dir)
-
-        print("Shuffling files from %s to %s, in %i folds." % (file_dir, shuffled_dir, folds))
+        if not os.path.isdir(self._out_dir):
+            os.makedirs(self._out_dir)
 
         self._read_labels()
-        self._create_new_labels(self._shuffled_dir)
-        self._move_files()
-
-    def _create_fold_name(self, number: int):
-        return self.FOLD_NAME + str(number)
+        self._create_new_labels(self._out_dir)
+        self._create_fold()
 
     def _read_labels(self):
         labels = []
 
-        with open(os.path.join(self._file_dir, self.LABEL_FILE), "r") as file:
+        with open(os.path.join(self._origin_dir, self.LABEL_FILE), "r") as file:
             for line in file:
                 labels.append(line.strip())
 
-        self._original_labels = labels
-        self._new_labels = random.sample(labels, len(labels))
+        self._origin_labels = labels
+
+        if self._shuffle:
+            self._new_labels = random.sample(labels, len(labels))
+        else:
+            self._new_labels = labels
 
     def _create_new_labels(self, write_dir: str, start: int = 0, end: int = 0):
         if end is 0:
@@ -97,49 +93,53 @@ class Shuffler:
             for index in range(start, end):
                 file.write(self._new_labels[index] + '\n')
 
-    def _move_files(self):
-        start = 0
-        files_per_fold = math.ceil(len(self._original_labels) / self._folds)
+    def _create_fold(self):
+        label_length = len(self._new_labels)
+        train_length = math.floor(label_length * self._train_part)
+        train_path = os.path.join(self._out_dir, self.TRAIN_NAME)
+        test_path = os.path.join(self._out_dir, self.TEST_NAME)
 
-        print("Copying files to destination dir")
+        # Move the train and test files
+        self._move_files(0, train_length, train_path)
+        self._move_files(train_length, label_length, test_path)
 
-        progress = ProgressBar(len(self._original_labels), fmt=ProgressBar.FULL)
+    def _move_files(self, start: int, end: int, destination: str):
+        progress = ProgressBar(end - start, fmt=ProgressBar.FULL)
 
-        for fold in range(0, self._folds):
-            fold_dir = os.path.join(self._shuffled_dir, self._create_fold_name(fold))
+        for index in range(start, end):
+            # Get the new label and the index of the label in the original directory
+            new_label = self._new_labels[index]
+            old_label_index = self._origin_labels.index(new_label)
 
-            for file_number in range(start, start + files_per_fold):
-                if file_number >= len(self._original_labels):
-                    self._create_new_labels(fold_dir, start)
-                    return
+            # Create the origin directory for the label and the destination directory
+            src_dir = os.path.join(self._origin_dir, str(old_label_index))
+            dest_dir = os.path.join(destination, str(index))
 
-                new_label = self._new_labels[file_number]
-                old_label_index = self._original_labels.index(new_label)
+            # Copy the directory
+            try:
+                shutil.copytree(src_dir, dest_dir)
+            except:
+                exit("Could not copy folder %s to %s.\nCheck if the output directory is completely empty!" % (
+                    src_dir, dest_dir))
+                progress.halt()
 
-                src_dir = os.path.join(self._file_dir, str(old_label_index))
-                dest_dir = os.path.join(fold_dir, str(file_number))
-
-                try:
-                    shutil.copytree(src_dir, dest_dir)
-                except:
-                    progress.halt()
-                    exit("Could not copy folder %s to %s.\nCheck if the output directory is completely empty!" % (
-                        src_dir, dest_dir))
-
-                progress.current += 1
-                progress()
-
-            self._create_new_labels(fold_dir, start, start + files_per_fold)
-            start = start + files_per_fold
+            # Update progress bar
+            progress.current += 1
+            progress()
 
         progress.done()
 
+class Folder:
+    def __init__(self, origin_dir: str, out_dir: str, folds: int, train_part: float = 0.8):
+        for fold in range(0, folds):
+            print("Creating fold " + str(fold))
+            Fold(origin_dir, out_dir, train_part, fold, False if fold == 0 else True)
 
 if __name__ == '__main__':
-    if len(sys.argv) > 3:
-        Shuffler(sys.argv[1], sys.argv[2], sys.argv[3])
-    elif len(sys.argv) > 2:
-        Shuffler(sys.argv[1], sys.argv[2])
+    if len(sys.argv) > 4:
+        Folder(sys.argv[1], sys.argv[2], int(sys.argv[3]), float(sys.argv[4]))
+    elif len(sys.argv) > 3:
+        Folder(sys.argv[1], sys.argv[2], int(sys.argv[3]))
     else:
-        exit("Should have at least 2 arguments! Origin dir and output dir.\n"
-             "You can give a third argument: the number of folds. This is optional")
+        exit("Should have at least 3 arguments! Origin dir, output dir and number of folds.\n"
+             "You can give a third argument: the training part of the data. This should be a number between 0 and 1. By default this is set to 0.8 (80%). This is optional.")

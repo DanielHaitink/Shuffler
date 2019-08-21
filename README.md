@@ -1,10 +1,8 @@
 # Shuffler
 
-Shuffler can be run with python 3 like so:```python3 shuffler.py path/to/data new/empty/destination/path```
+Shuffler can be run with python 3 like so:```python3 shuffler.py path/to/data new/empty/destination/path 5```
 This will create 5 folds in the second path.
 
 
-You can also run it with an additional parameter, the number of folds. If you want to create a different amount of folds in the output directory.
-The python call will then look like this:  ```python3 shuffler.py path/to/data new/empty/destination/path 3```
-
-This time, the script will create just 3 folds instead of 5.
+You can also run it with an additional parameter, the percentage of the training set. This should be given as a number between 0 and 1. By default this is set to 0.8 (80%).
+The python call will then look like this:  ```python3 shuffler.py path/to/data new/empty/destination/path 5 0.9```
